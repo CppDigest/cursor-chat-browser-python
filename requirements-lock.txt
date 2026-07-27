@@ -3,8 +3,6 @@
 # Update:  pip-compile requirements.txt --output-file requirements-lock.txt --no-header --annotation-style=line --allow-unsafe --upgrade
 # Run periodically (e.g. via the "Update dependency lock file" CI workflow) to pick up
 # upstream patch / security releases within the bounded ranges in requirements.txt.
-# Lock is generated on Linux (CI / update-lock.yml). Windows-only transitives (e.g.
-# colorama via click) are omitted — pip still installs them on Windows when needed.
 blinker==1.9.0            # via flask
 click==8.4.2              # via flask
 defusedxml==0.7.1         # via fpdf2
