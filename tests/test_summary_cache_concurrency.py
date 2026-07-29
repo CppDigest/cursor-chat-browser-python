@@ -42,18 +42,21 @@ def _make_workspace_fixture(root: str) -> tuple[str, list[dict[str, object]]]:
 class TestSummaryCacheConcurrency(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.cache_patch = patch.object(summary_cache, "CACHE_DIR", Path(self.tmp.name))
-        self.cache_patch.start()
-        summary_cache.PROJECTS_CACHE_FILE = Path(self.tmp.name) / "projects.json"
-        summary_cache.COMPOSER_MAP_CACHE_FILE = (
-            Path(self.tmp.name) / "composer-id-to-ws.json"
-        )
-        summary_cache.INVALID_WORKSPACE_ALIASES_CACHE_FILE = (
-            Path(self.tmp.name) / "invalid-workspace-aliases.json"
-        )
+        cache_dir = Path(self.tmp.name)
+        self._patches = [
+            patch.object(summary_cache, "CACHE_DIR", cache_dir),
+            patch.object(
+                summary_cache,
+                "PROJECTS_CACHE_FILE",
+                cache_dir / "projects.json",
+            ),
+        ]
+        for patcher in self._patches:
+            patcher.start()
 
     def tearDown(self):
-        self.cache_patch.stop()
+        for patcher in reversed(self._patches):
+            patcher.stop()
         self.tmp.cleanup()
 
     def test_blocked_build_recheck_returns_peer_cache(self):

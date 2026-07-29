@@ -526,15 +526,14 @@ def list_workspace_tab_summaries(
         but ``tabs`` entries carry no ``bubbles`` field.
     """
     workspace_entries = collect_workspace_entries(workspace_path)
-    if nocache_enabled(request_nocache=nocache):
-        return _build_workspace_tab_summaries_uncached(
-            workspace_id, workspace_path, rules, workspace_entries, nocache=nocache,
-        )
 
     def build() -> tuple[dict[str, Any], int]:
         return _build_workspace_tab_summaries_uncached(
             workspace_id, workspace_path, rules, workspace_entries, nocache=nocache,
         )
+
+    if nocache_enabled(request_nocache=nocache):
+        return build()
 
     return get_or_build_cached_tab_summaries(
         workspace_path,

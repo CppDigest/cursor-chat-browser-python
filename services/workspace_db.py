@@ -440,11 +440,11 @@ def build_composer_id_to_workspace_id_cached(
         nocache_enabled,
     )
 
-    if nocache_enabled(request_nocache=nocache):
-        return build_composer_id_to_workspace_id(workspace_path, workspace_entries)
-
     def build() -> dict[str, str]:
         return build_composer_id_to_workspace_id(workspace_path, workspace_entries)
+
+    if nocache_enabled(request_nocache=nocache):
+        return build()
 
     return get_or_build_cached_composer_id_to_ws(
         workspace_path,
