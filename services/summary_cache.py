@@ -17,7 +17,7 @@ import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from utils.exclusion_rules import RuleTokens
 
@@ -33,6 +33,8 @@ PROJECTS_CACHE_FILE = CACHE_DIR / "projects.json"
 COMPOSER_MAP_CACHE_FILE = CACHE_DIR / "composer-id-to-ws.json"
 INVALID_WORKSPACE_ALIASES_CACHE_FILE = CACHE_DIR / "invalid-workspace-aliases.json"
 TAB_SUMMARIES_PREFIX = "tab-summaries-"
+
+T = TypeVar("T")
 
 
 def nocache_enabled(*, request_nocache: bool = False) -> bool:
@@ -166,11 +168,6 @@ def _read_cache_file_unlocked(path: Path | str) -> dict[str, Any] | None:
         return None
 
 
-def _read_cache_file(path: Path | str) -> dict[str, Any] | None:
-    with _summary_cache_lock:
-        return _read_cache_file_unlocked(path)
-
-
 def _write_cache_file_unlocked(path: Path | str, payload: dict[str, Any]) -> None:
     p = Path(path)
     try:
@@ -252,6 +249,34 @@ def set_cached_projects(
         _set_cached_projects_unlocked(fingerprint, projects, warnings)
 
 
+def _get_or_build_cached(
+    workspace_path: str,
+    workspace_entries: list[dict[str, Any]],
+    rules: list[RuleTokens],
+    *,
+    build_fn: Callable[[], T],
+    get_unlocked: Callable[[dict[str, Any]], T | None],
+    set_unlocked: Callable[[dict[str, Any], T], None],
+    should_cache: Callable[[T], bool] | None = None,
+) -> T:
+    with _summary_cache_lock:
+        fingerprint = _workspace_storage_fingerprint(workspace_path, workspace_entries, rules)
+        hit = get_unlocked(fingerprint)
+        if hit is not None:
+            return hit
+
+    built = build_fn()
+
+    with _summary_cache_lock:
+        fingerprint = _workspace_storage_fingerprint(workspace_path, workspace_entries, rules)
+        hit = get_unlocked(fingerprint)
+        if hit is not None:
+            return hit
+        if should_cache is None or should_cache(built):
+            set_unlocked(fingerprint, built)
+    return built
+
+
 def get_or_build_cached_projects(
     workspace_path: str,
     workspace_entries: list[dict[str, Any]],
@@ -260,21 +285,14 @@ def get_or_build_cached_projects(
     build_fn: Callable[[], tuple[list[dict[str, Any]], list[dict[str, Any]]]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Return cached projects or build once under double-checked locking."""
-    with _summary_cache_lock:
-        fingerprint = _workspace_storage_fingerprint(workspace_path, workspace_entries, rules)
-        hit = _get_cached_projects_unlocked(fingerprint)
-        if hit is not None:
-            return hit
-
-    built = build_fn()
-
-    with _summary_cache_lock:
-        fingerprint = _workspace_storage_fingerprint(workspace_path, workspace_entries, rules)
-        hit = _get_cached_projects_unlocked(fingerprint)
-        if hit is not None:
-            return hit
-        _set_cached_projects_unlocked(fingerprint, built[0], built[1])
-    return built
+    return _get_or_build_cached(
+        workspace_path,
+        workspace_entries,
+        rules,
+        build_fn=build_fn,
+        get_unlocked=_get_cached_projects_unlocked,
+        set_unlocked=lambda fp, built: _set_cached_projects_unlocked(fp, built[0], built[1]),
+    )
 
 
 def _get_cached_composer_id_to_ws_unlocked(
@@ -341,21 +359,14 @@ def get_or_build_cached_composer_id_to_ws(
     build_fn: Callable[[], dict[str, str]],
 ) -> dict[str, str]:
     """Return cached composer map or build once under double-checked locking."""
-    with _summary_cache_lock:
-        fingerprint = _workspace_storage_fingerprint(workspace_path, workspace_entries, rules)
-        hit = _get_cached_composer_id_to_ws_unlocked(fingerprint)
-        if hit is not None:
-            return hit
-
-    built = build_fn()
-
-    with _summary_cache_lock:
-        fingerprint = _workspace_storage_fingerprint(workspace_path, workspace_entries, rules)
-        hit = _get_cached_composer_id_to_ws_unlocked(fingerprint)
-        if hit is not None:
-            return hit
-        _set_cached_composer_id_to_ws_unlocked(fingerprint, built)
-    return built
+    return _get_or_build_cached(
+        workspace_path,
+        workspace_entries,
+        rules,
+        build_fn=build_fn,
+        get_unlocked=_get_cached_composer_id_to_ws_unlocked,
+        set_unlocked=_set_cached_composer_id_to_ws_unlocked,
+    )
 
 
 def _get_cached_invalid_workspace_aliases_unlocked(
@@ -435,21 +446,14 @@ def get_or_build_cached_invalid_workspace_aliases(
     build_fn: Callable[[], dict[str, str]],
 ) -> dict[str, str]:
     """Return cached alias map or build once under double-checked locking."""
-    with _summary_cache_lock:
-        fingerprint = _workspace_storage_fingerprint(workspace_path, workspace_entries, rules)
-        hit = _get_cached_invalid_workspace_aliases_unlocked(fingerprint)
-        if hit is not None:
-            return hit
-
-    built = build_fn()
-
-    with _summary_cache_lock:
-        fingerprint = _workspace_storage_fingerprint(workspace_path, workspace_entries, rules)
-        hit = _get_cached_invalid_workspace_aliases_unlocked(fingerprint)
-        if hit is not None:
-            return hit
-        _set_cached_invalid_workspace_aliases_unlocked(fingerprint, built)
-    return built
+    return _get_or_build_cached(
+        workspace_path,
+        workspace_entries,
+        rules,
+        build_fn=build_fn,
+        get_unlocked=_get_cached_invalid_workspace_aliases_unlocked,
+        set_unlocked=_set_cached_invalid_workspace_aliases_unlocked,
+    )
 
 
 def _tab_summaries_path(workspace_id: str) -> Path:
@@ -536,19 +540,14 @@ def get_or_build_cached_tab_summaries(
     build_fn: Callable[[], tuple[dict[str, Any], int]],
 ) -> tuple[dict[str, Any], int]:
     """Return cached tab summaries or build once under double-checked locking."""
-    with _summary_cache_lock:
-        fingerprint = _workspace_storage_fingerprint(workspace_path, workspace_entries, rules)
-        hit = _get_cached_tab_summaries_unlocked(fingerprint, workspace_id)
-        if hit is not None:
-            return hit
-
-    payload, status = build_fn()
-
-    with _summary_cache_lock:
-        fingerprint = _workspace_storage_fingerprint(workspace_path, workspace_entries, rules)
-        hit = _get_cached_tab_summaries_unlocked(fingerprint, workspace_id)
-        if hit is not None:
-            return hit
-        if status == 200:
-            _set_cached_tab_summaries_unlocked(fingerprint, workspace_id, payload, status)
-    return payload, status
+    return _get_or_build_cached(
+        workspace_path,
+        workspace_entries,
+        rules,
+        build_fn=build_fn,
+        get_unlocked=lambda fp: _get_cached_tab_summaries_unlocked(fp, workspace_id),
+        set_unlocked=lambda fp, built: _set_cached_tab_summaries_unlocked(
+            fp, workspace_id, built[0], built[1],
+        ),
+        should_cache=lambda built: built[1] == 200,
+    )

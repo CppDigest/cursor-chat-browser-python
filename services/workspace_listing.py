@@ -32,7 +32,6 @@ from services.workspace_context import resolve_invalid_workspace_aliases_cached
 from services.workspace_db import (
     COMPOSER_ROWS_WITH_HEADERS_SQL,
     collect_workspace_entries,
-    global_storage_db_path,
     load_project_layouts_map,
     open_global_db,
     safe_fetchall,

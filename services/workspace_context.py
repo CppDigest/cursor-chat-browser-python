@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sqlite3
 from dataclasses import dataclass, replace
 from typing import Any
@@ -16,7 +15,6 @@ from services.workspace_db import (
     build_composer_id_to_workspace_id_cached,
     collect_invalid_workspace_ids,
     collect_workspace_entries,
-    global_storage_db_path,
     load_bubble_map,
     load_project_layouts_map,
     safe_fetchall,

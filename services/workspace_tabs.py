@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import sqlite3
 from collections.abc import Iterator, Mapping
 from datetime import datetime
