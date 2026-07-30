@@ -57,20 +57,7 @@ jobs:
       - name: Check pywebview pin is single-sourced
         run: |
           python scripts/read_desktop_pywebview_spec.py
-          python <<'PY'
-          import sys
-          from pathlib import Path
-
-          for path in sorted(Path(".github/workflows").glob("*.yml")):
-              text = path.read_text()
-              if "pywebview>=" in text or "pywebview<" in text:
-                  print(f"{path} hardcodes a pywebview version; use scripts/read_desktop_pywebview_spec.py", file=sys.stderr)
-                  sys.exit(1)
-              if "read_desktop_pywebview_spec.py" not in text and "pywebview" in text.lower():
-                  if path.name in ("release.yml", "tests.yml"):
-                      print(f"{path} installs pywebview but does not read the pin from pyproject", file=sys.stderr)
-                      sys.exit(1)
-          PY
+          python scripts/check_pywebview_workflow_pin.py
 
       - name: Install pip-tools
         # Pin matches update-lock.yml so lock verification uses the same resolver.
