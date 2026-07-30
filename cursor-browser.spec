@@ -17,6 +17,7 @@ a = Analysis(
         (str(src / "static"), "static"),
     ],
     hiddenimports=[
+        "webview",
         "api.workspaces",
         "api.composers",
         "api.logs",

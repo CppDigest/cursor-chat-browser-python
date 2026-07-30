@@ -1,0 +1,120 @@
+name: Release
+
+# Fires when an annotated version tag is pushed (for example v0.2.1).
+# Builds hatchling wheel + sdist and a Windows PyInstaller zip, then attaches
+# all three as GitHub Release assets via softprops/action-gh-release.
+#
+# Expected asset names (version comes from pyproject.toml at the tagged commit):
+#   cppa_cursor_browser-<version>-py3-none-any.whl   (~154 KiB at 0.2.0)
+#   cppa_cursor_browser-<version>.tar.gz               (~225 KiB at 0.2.0)
+#   CursorChatBrowser-windows.zip                      (PyInstaller onedir bundle)
+#
+# Fork verification: push a test tag (for example v0.0.0-test) and confirm the
+# workflow attaches all three files to the resulting Release.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-python:
+    name: Build wheel and sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Build hatchling distributables
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'build>=1,<2'
+          python -m build
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: python-distributables
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows PyInstaller bundle
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime dependencies
+        # Lock file for Flask/runtime deps; pywebview is the [desktop] extra and
+        # is required so the published exe can open its native window.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+          python -m pip install 'pywebview>=5.0,<7'
+
+      - name: Install PyInstaller
+        run: python -m pip install 'pyinstaller>=6,<7'
+
+      - name: Build PyInstaller bundle
+        run: pyinstaller cursor-browser.spec --noconfirm
+
+      - name: Smoke-test PyInstaller exe (--help)
+        run: dist\CursorChatBrowser\CursorChatBrowser.exe --help
+
+      - name: Zip onedir bundle
+        shell: pwsh
+        run: |
+          if (-not (Test-Path dist\CursorChatBrowser\CursorChatBrowser.exe)) {
+            Write-Error "dist\CursorChatBrowser\CursorChatBrowser.exe not found"
+            exit 1
+          }
+          Compress-Archive -Path dist\CursorChatBrowser -DestinationPath CursorChatBrowser-windows.zip
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: windows-bundle
+          path: CursorChatBrowser-windows.zip
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release assets
+    needs: [build-python, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Python distributables
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: python-distributables
+          path: release-assets
+
+      - name: Download Windows bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: windows-bundle
+          path: release-assets
+
+      - name: Attach artifacts to Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2
+        with:
+          files: release-assets/*

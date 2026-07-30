@@ -263,6 +263,18 @@ Adding new optional fields to JSON responses, adding new CLI flags with sensible
 
 Notable changes will be documented in **[CHANGELOG.md](CHANGELOG.md)** following the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+### GitHub Releases
+
+Pushing an annotated tag matching `v*` (for example `v0.2.1`) runs [`.github/workflows/release.yml`](.github/workflows/release.yml), which attaches three assets to the GitHub Release:
+
+| Asset | Contents |
+|---|---|
+| `cppa_cursor_browser-<version>-py3-none-any.whl` | Installable wheel (hatchling build) |
+| `cppa_cursor_browser-<version>.tar.gz` | Source distribution |
+| `CursorChatBrowser-windows.zip` | Windows PyInstaller onedir bundle (`CursorChatBrowser.exe` plus supporting files) |
+
+At `0.2.0`, local `python -m build` produced a ~154 KiB wheel and ~225 KiB sdist; the Windows zip size depends on the locked dependency tree at tag time. Copy release notes from the matching `[version]` section in `CHANGELOG.md` when publishing the GitHub Release.
+
 When an API surface is scheduled for removal, follow the process in **[docs/API_DEPRECATION.md](docs/API_DEPRECATION.md)** (response headers, changelog entries, minimum notice period).
 
 ## License
