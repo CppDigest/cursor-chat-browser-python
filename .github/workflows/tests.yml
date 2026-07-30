@@ -54,6 +54,11 @@ jobs:
               sys.exit(1)
           PY
 
+      - name: Check pywebview pin is single-sourced
+        run: |
+          python scripts/read_desktop_pywebview_spec.py
+          python scripts/check_pywebview_workflow_pin.py
+
       - name: Install pip-tools
         # Pin matches update-lock.yml so lock verification uses the same resolver.
         run: python -m pip install 'pip-tools==7.5.3'
@@ -118,8 +123,14 @@ jobs:
         run: python -m pytest tests/test_api_search.py tests/test_api_workspaces.py tests/test_api_export.py tests/test_pdf_export.py tests/test_search_helpers.py tests/test_check_benchmark_regression.py tests/test_reduce_baselines.py -v --tb=short -o addopts=
 
       # ── PyInstaller desktop build (Windows only, once per workflow) ────────
-      # Closes #44. Builds the onedir bundle and smoke-tests --help so the
-      # desktop entry point is verified without launching the GUI window.
+      # Closes #44. Check webview/lib after build; --help returns before import webview.
+      - name: Install pywebview for PyInstaller bundle
+        if: matrix.os == 'windows-latest' && matrix.python-version == '3.12'
+        shell: pwsh
+        run: |
+          $spec = python scripts/read_desktop_pywebview_spec.py
+          python -m pip install $spec
+
       - name: Install PyInstaller
         if: matrix.os == 'windows-latest' && matrix.python-version == '3.12'
         run: python -m pip install 'pyinstaller>=6,<7'
@@ -128,9 +139,15 @@ jobs:
         if: matrix.os == 'windows-latest' && matrix.python-version == '3.12'
         run: pyinstaller cursor-browser.spec --noconfirm
 
-      - name: Smoke-test PyInstaller exe (--help)
+      - name: Check webview/lib in bundle
         if: matrix.os == 'windows-latest' && matrix.python-version == '3.12'
-        run: dist\CursorChatBrowser\CursorChatBrowser.exe --help
+        shell: pwsh
+        run: |
+          $lib = 'dist\CursorChatBrowser\_internal\webview\lib'
+          if (-not (Test-Path $lib)) {
+            Write-Error "pywebview bundle missing: $lib"
+            exit 1
+          }
 
   # ── Browser XSS: Playwright (sprint item #3) ─────────────────────────────
   browser-xss:
