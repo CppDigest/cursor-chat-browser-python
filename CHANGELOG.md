@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **highlight.js SRI pins** for script and theme (#145)
-- **Content-Security-Policy** on all served HTML pages — per-response nonce for
+- **Content-Security-Policy** on all served HTML pages: per-response nonce for
   inline bootstrap; `frame-ancestors 'none'` blocks iframe embedding,
   `img-src 'self' data:` blocks remote images (relax in
   `build_content_security_policy`) (#147)
@@ -23,11 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI regression gate excludes `composers-50` export benchmark (#148)
 
 ### Fixed
-- **highlight.js CDN miss** — workspace view skips `hljs.highlightElement` when
+- **highlight.js CDN miss**: workspace view skips `hljs.highlightElement` when
   the script did not load (#145)
-- **Multi-worker set-workspace** — `/api/set-workspace` returns HTTP 409; set
+- **Multi-worker set-workspace**: `/api/set-workspace` returns HTTP 409; set
   `WORKSPACE_PATH` or pass `--base-dir` at startup (#150)
-- **Summary-cache fingerprint lock** — read-compare-write serialised under a
+- **Summary-cache fingerprint lock**: read-compare-write serialised under a
   module lock (#158)
 
 ## [0.2.0] - 2026-07-17
