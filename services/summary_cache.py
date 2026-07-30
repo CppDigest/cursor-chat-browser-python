@@ -115,7 +115,7 @@ def fingerprint_workspace_storage(
     }
 
 
-def _workspace_storage_fingerprint(
+def workspace_storage_fingerprint(
     workspace_path: str,
     workspace_entries: list[dict[str, Any]],
     rules: list[RuleTokens],
@@ -260,20 +260,25 @@ def _get_or_build_cached(
     should_cache: Callable[[T], bool] | None = None,
 ) -> T:
     with _summary_cache_lock:
-        fingerprint = _workspace_storage_fingerprint(workspace_path, workspace_entries, rules)
-        hit = get_unlocked(fingerprint)
+        pre_fingerprint = workspace_storage_fingerprint(
+            workspace_path, workspace_entries, rules,
+        )
+        hit = get_unlocked(pre_fingerprint)
         if hit is not None:
             return hit
 
     built = build_fn()
 
     with _summary_cache_lock:
-        fingerprint = _workspace_storage_fingerprint(workspace_path, workspace_entries, rules)
-        hit = get_unlocked(fingerprint)
+        post_fingerprint = workspace_storage_fingerprint(
+            workspace_path, workspace_entries, rules,
+        )
+        hit = get_unlocked(post_fingerprint)
         if hit is not None:
             return hit
         if should_cache is None or should_cache(built):
-            set_unlocked(fingerprint, built)
+            if _fingerprint_equal(pre_fingerprint, post_fingerprint):
+                set_unlocked(pre_fingerprint, built)
     return built
 
 

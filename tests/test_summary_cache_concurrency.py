@@ -142,7 +142,7 @@ class TestSummaryCacheConcurrency(unittest.TestCase):
         warm_projects = [
             {"id": "warm", "name": "Warm", "conversationCount": 2, "lastModified": "z"},
         ]
-        fingerprint = summary_cache._workspace_storage_fingerprint(
+        fingerprint = summary_cache.workspace_storage_fingerprint(
             workspace_path,
             workspace_entries,  # type: ignore[arg-type]
             [],

@@ -64,7 +64,6 @@ def _minimal_orch(
     return WorkspaceOrchestration(
         workspace_path=tmp_ws,
         workspace_entries=[],
-        fingerprint={},
         ctx=_minimal_ctx(),
         workspace_id_to_display_name=display_name or {},
         workspace_id_to_slug=slug_map or {},
