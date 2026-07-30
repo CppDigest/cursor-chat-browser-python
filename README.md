@@ -265,7 +265,7 @@ Notable changes will be documented in **[CHANGELOG.md](CHANGELOG.md)** following
 
 ### GitHub Releases
 
-Pushing an annotated tag matching `v*` (for example `v0.2.1`) runs [`.github/workflows/release.yml`](.github/workflows/release.yml), which attaches three assets to the GitHub Release:
+Pushing a tag matching `v*` (for example `v0.2.1`) runs [`.github/workflows/release.yml`](.github/workflows/release.yml), which attaches three assets to the GitHub Release:
 
 | Asset | Contents |
 |---|---|

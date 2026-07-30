@@ -1,6 +1,6 @@
 name: Release
 
-# Fires when an annotated version tag is pushed (for example v0.2.1).
+# Fires when a version tag is pushed (for example v0.2.1).
 # Builds hatchling wheel + sdist and a Windows PyInstaller zip, then attaches
 # all three as GitHub Release assets via softprops/action-gh-release.
 #
@@ -18,7 +18,7 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -101,6 +101,8 @@ jobs:
     name: Publish GitHub Release assets
     needs: [build-python, build-windows]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download Python distributables
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
