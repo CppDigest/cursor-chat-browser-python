@@ -11,25 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **highlight.js SRI pins** for script and theme (#145)
-- **Content-Security-Policy header** on every served HTML page — restrictive
-  default policy with per-response nonce for inline bootstrap; `frame-ancestors
-  'none'` blocks iframe embedding and `img-src 'self' data:` blocks remote images
-  unless operators relax those directives in `build_content_security_policy`
-  (#147)
+- **Content-Security-Policy** on all served HTML pages — per-response nonce for
+  inline bootstrap; `frame-ancestors 'none'` blocks iframe embedding,
+  `img-src 'self' data:` blocks remote images (relax in
+  `build_content_security_policy`) (#147)
 - **Playwright XSS tests** for `renderMarkdownSafe` (#151)
 
 ### Changed
 - **Structured `{error, code}` bodies** on workspaces, composers, search, export,
-  PDF, and config API routes (#146)
+  PDF, and config routes (#146)
 - CI regression gate excludes `composers-50` export benchmark (#148)
 
 ### Fixed
-- **Workspace page no longer crashes** when highlight.js fails to load (guards
-  `hljs.highlightElement` behind a typeof check) (#145)
-- **HTTP 409** from `/api/set-workspace` when multiple WSGI workers are in use;
-  multi-worker deployments must set `WORKSPACE_PATH` or pass `--base-dir` at
-  startup (#150)
-- **Summary-cache fingerprint read-compare-write** serialised under a module lock (#158)
+- **highlight.js CDN miss** — workspace view skips `hljs.highlightElement` when
+  the script did not load (#145)
+- **Multi-worker set-workspace** — `/api/set-workspace` returns HTTP 409; set
+  `WORKSPACE_PATH` or pass `--base-dir` at startup (#150)
+- **Summary-cache fingerprint lock** — read-compare-write serialised under a
+  module lock (#158)
 
 ## [0.2.0] - 2026-07-17
 
