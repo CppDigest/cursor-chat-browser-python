@@ -436,30 +436,22 @@ def build_composer_id_to_workspace_id_cached(
 ) -> dict[str, str]:
     """Like :func:`build_composer_id_to_workspace_id` with optional disk cache."""
     from services.summary_cache import (
-        fingerprint_workspace_storage,
-        get_cached_composer_id_to_ws,
+        get_or_build_cached_composer_id_to_ws,
         nocache_enabled,
-        set_cached_composer_id_to_ws,
     )
-    from utils.workspace_path import get_cli_chats_path
 
-    gdb = global_storage_db_path(workspace_path)
-    cli_path = get_cli_chats_path()
-    fingerprint = fingerprint_workspace_storage(
+    def build() -> dict[str, str]:
+        return build_composer_id_to_workspace_id(workspace_path, workspace_entries)
+
+    if nocache_enabled(request_nocache=nocache):
+        return build()
+
+    return get_or_build_cached_composer_id_to_ws(
         workspace_path,
         workspace_entries,
-        global_db_path=gdb if os.path.isfile(gdb) else None,
-        rules=rules,
-        cli_chats_path=cli_path if os.path.isdir(cli_path) else None,
+        rules,
+        build_fn=build,
     )
-    if not nocache_enabled(request_nocache=nocache):
-        cached = get_cached_composer_id_to_ws(fingerprint)
-        if cached is not None:
-            return cached
-    mapping = build_composer_id_to_workspace_id(workspace_path, workspace_entries)
-    if not nocache_enabled(request_nocache=nocache):
-        set_cached_composer_id_to_ws(fingerprint, mapping)
-    return mapping
 
 
 @contextmanager

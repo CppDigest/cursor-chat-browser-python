@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import sqlite3
 from collections.abc import Iterator, Mapping
 from datetime import datetime
@@ -44,10 +43,8 @@ from services.workspace_composer_scan import (
     parse_composer_data_row,
 )
 from services.summary_cache import (
-    fingerprint_workspace_storage,
-    get_cached_tab_summaries,
+    get_or_build_cached_tab_summaries,
     nocache_enabled,
-    set_cached_tab_summaries,
 )
 from services.workspace_context import (
     resolve_workspace_context_cached,
@@ -56,7 +53,6 @@ from services.workspace_context import (
 from services.workspace_db import (
     COMPOSER_ROWS_WITH_HEADERS_SQL,
     collect_workspace_entries,
-    global_storage_db_path,
     load_bubble_map,
     load_bubbles_for_composer,
     load_code_block_diff_map,
@@ -67,7 +63,6 @@ from services.workspace_db import (
     open_global_db,
     safe_fetchall,
 )
-from utils.workspace_path import get_cli_chats_path
 from services.workspace_resolver import (
     lookup_workspace_display_name,
     matching_workspace_ids_for_folder,
@@ -530,26 +525,22 @@ def list_workspace_tab_summaries(
         but ``tabs`` entries carry no ``bubbles`` field.
     """
     workspace_entries = collect_workspace_entries(workspace_path)
-    gdb = global_storage_db_path(workspace_path)
-    cli_path = get_cli_chats_path()
-    fingerprint = fingerprint_workspace_storage(
+
+    def build() -> tuple[dict[str, Any], int]:
+        return _build_workspace_tab_summaries_uncached(
+            workspace_id, workspace_path, rules, workspace_entries, nocache=nocache,
+        )
+
+    if nocache_enabled(request_nocache=nocache):
+        return build()
+
+    return get_or_build_cached_tab_summaries(
         workspace_path,
         workspace_entries,
-        global_db_path=gdb if os.path.isfile(gdb) else None,
-        rules=rules,
-        cli_chats_path=cli_path if os.path.isdir(cli_path) else None,
+        rules,
+        workspace_id,
+        build_fn=build,
     )
-    if not nocache_enabled(request_nocache=nocache):
-        cached = get_cached_tab_summaries(fingerprint, workspace_id)
-        if cached is not None:
-            return cached
-
-    payload, status = _build_workspace_tab_summaries_uncached(
-        workspace_id, workspace_path, rules, workspace_entries, nocache=nocache,
-    )
-    if status == 200 and not nocache_enabled(request_nocache=nocache):
-        set_cached_tab_summaries(fingerprint, workspace_id, payload, status)
-    return payload, status
 
 
 def _build_workspace_tab_summaries_uncached(

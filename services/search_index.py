@@ -29,8 +29,8 @@ from services.search import (
 )
 from services.summary_cache import (
     CACHE_DIR,
-    fingerprint_workspace_storage,
     nocache_enabled,
+    workspace_storage_fingerprint,
 )
 from services.workspace_db import (
     COMPOSER_ROWS_WITH_HEADERS_SQL,
@@ -40,7 +40,6 @@ from services.workspace_db import (
 )
 from utils.path_helpers import to_epoch_ms
 from utils.exclusion_rules import RuleTokens
-from utils.workspace_path import get_cli_chats_path
 
 __all__ = [
     "SEARCH_INDEX_FILE",
@@ -130,15 +129,7 @@ def index_search_enabled() -> bool:
 
 def _storage_fingerprint(workspace_path: str, rules: list[RuleTokens]) -> dict[str, Any]:
     entries = collect_workspace_entries(workspace_path)
-    gdb = global_storage_db_path(workspace_path)
-    cli_path = get_cli_chats_path()
-    return fingerprint_workspace_storage(
-        workspace_path,
-        entries,
-        global_db_path=gdb if os.path.isfile(gdb) else None,
-        rules=rules,
-        cli_chats_path=cli_path if os.path.isdir(cli_path) else None,
-    )
+    return workspace_storage_fingerprint(workspace_path, entries, rules)
 
 
 def _open_index_db(*, readonly: bool = True) -> sqlite3.Connection | None:

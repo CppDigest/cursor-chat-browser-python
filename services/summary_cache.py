@@ -13,13 +13,19 @@ import hashlib
 import json
 import logging
 import os
+import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from utils.exclusion_rules import RuleTokens
 
 _logger = logging.getLogger(__name__)
+
+# Serialises fingerprint compute, cache read-compare, and cache write so threaded
+# WSGI workers cannot lost-update a peer's fresh cache entry (see design guide).
+_summary_cache_lock = threading.Lock()
 
 CACHE_VERSION = 1
 CACHE_DIR = Path.home() / ".cache" / "cursor-chat-browser"
@@ -27,6 +33,8 @@ PROJECTS_CACHE_FILE = CACHE_DIR / "projects.json"
 COMPOSER_MAP_CACHE_FILE = CACHE_DIR / "composer-id-to-ws.json"
 INVALID_WORKSPACE_ALIASES_CACHE_FILE = CACHE_DIR / "invalid-workspace-aliases.json"
 TAB_SUMMARIES_PREFIX = "tab-summaries-"
+
+T = TypeVar("T")
 
 
 def nocache_enabled(*, request_nocache: bool = False) -> bool:
@@ -107,6 +115,26 @@ def fingerprint_workspace_storage(
     }
 
 
+def workspace_storage_fingerprint(
+    workspace_path: str,
+    workspace_entries: list[dict[str, Any]],
+    rules: list[RuleTokens],
+) -> dict[str, Any]:
+    """Fingerprint workspace storage, resolving global-db and cli-chats paths."""
+    from services.workspace_db import global_storage_db_path
+    from utils.workspace_path import get_cli_chats_path
+
+    gdb = global_storage_db_path(workspace_path)
+    cli_path = get_cli_chats_path()
+    return fingerprint_workspace_storage(
+        workspace_path,
+        workspace_entries,
+        global_db_path=gdb if os.path.isfile(gdb) else None,
+        rules=rules,
+        cli_chats_path=cli_path if os.path.isdir(cli_path) else None,
+    )
+
+
 def _normalize_fingerprint(fp: dict[str, Any]) -> dict[str, Any]:
     """Normalize fingerprint for comparison (JSON round-trip uses lists, not tuples)."""
     normalized = dict(fp)
@@ -125,7 +153,7 @@ def _fingerprint_equal(a: object, b: dict[str, Any]) -> bool:
     return _normalize_fingerprint(a) == _normalize_fingerprint(b)
 
 
-def _read_cache_file(path: Path | str) -> dict[str, Any] | None:
+def _read_cache_file_unlocked(path: Path | str) -> dict[str, Any] | None:
     p = Path(path)
     if not p.is_file():
         return None
@@ -140,7 +168,7 @@ def _read_cache_file(path: Path | str) -> dict[str, Any] | None:
         return None
 
 
-def _write_cache_file(path: Path | str, payload: dict[str, Any]) -> None:
+def _write_cache_file_unlocked(path: Path | str, payload: dict[str, Any]) -> None:
     p = Path(path)
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -150,6 +178,28 @@ def _write_cache_file(path: Path | str, payload: dict[str, Any]) -> None:
         tmp.replace(p)
     except OSError as e:
         _logger.warning("Summary cache write failed for %s: %s", path, e)
+
+
+def _write_cache_file(path: Path | str, payload: dict[str, Any]) -> None:
+    with _summary_cache_lock:
+        _write_cache_file_unlocked(path, payload)
+
+
+def _get_cached_projects_unlocked(
+    fingerprint: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] | None:
+    data = _read_cache_file_unlocked(PROJECTS_CACHE_FILE)
+    if not data:
+        return None
+    if not _fingerprint_equal(data.get("fingerprint"), fingerprint):
+        return None
+    projects = data.get("projects")
+    warnings = data.get("warnings")
+    if not isinstance(projects, list):
+        return None
+    if not isinstance(warnings, list):
+        warnings = []
+    return projects, warnings
 
 
 def get_cached_projects(
@@ -164,18 +214,23 @@ def get_cached_projects(
     Returns:
         ``(projects, warnings)`` on hit, else ``None``.
     """
-    data = _read_cache_file(PROJECTS_CACHE_FILE)
-    if not data:
-        return None
-    if not _fingerprint_equal(data.get("fingerprint"), fingerprint):
-        return None
-    projects = data.get("projects")
-    warnings = data.get("warnings")
-    if not isinstance(projects, list):
-        return None
-    if not isinstance(warnings, list):
-        warnings = []
-    return projects, warnings
+    with _summary_cache_lock:
+        return _get_cached_projects_unlocked(fingerprint)
+
+
+def _set_cached_projects_unlocked(
+    fingerprint: dict[str, Any],
+    projects: list[dict[str, Any]],
+    warnings: list[dict[str, Any]],
+) -> None:
+    _write_cache_file_unlocked(
+        PROJECTS_CACHE_FILE,
+        {
+            "fingerprint": fingerprint,
+            "projects": projects,
+            "warnings": warnings,
+        },
+    )
 
 
 def set_cached_projects(
@@ -190,14 +245,73 @@ def set_cached_projects(
         projects: Sidebar project dicts.
         warnings: Parse warnings emitted while building *projects*.
     """
-    _write_cache_file(
-        PROJECTS_CACHE_FILE,
-        {
-            "fingerprint": fingerprint,
-            "projects": projects,
-            "warnings": warnings,
-        },
+    with _summary_cache_lock:
+        _set_cached_projects_unlocked(fingerprint, projects, warnings)
+
+
+def _get_or_build_cached(
+    workspace_path: str,
+    workspace_entries: list[dict[str, Any]],
+    rules: list[RuleTokens],
+    *,
+    build_fn: Callable[[], T],
+    get_unlocked: Callable[[dict[str, Any]], T | None],
+    set_unlocked: Callable[[dict[str, Any], T], None],
+    should_cache: Callable[[T], bool] | None = None,
+) -> T:
+    with _summary_cache_lock:
+        pre_fingerprint = workspace_storage_fingerprint(
+            workspace_path, workspace_entries, rules,
+        )
+        hit = get_unlocked(pre_fingerprint)
+        if hit is not None:
+            return hit
+
+    built = build_fn()
+
+    with _summary_cache_lock:
+        post_fingerprint = workspace_storage_fingerprint(
+            workspace_path, workspace_entries, rules,
+        )
+        hit = get_unlocked(post_fingerprint)
+        if hit is not None:
+            return hit
+        if should_cache is None or should_cache(built):
+            if _fingerprint_equal(pre_fingerprint, post_fingerprint):
+                set_unlocked(pre_fingerprint, built)
+    return built
+
+
+def get_or_build_cached_projects(
+    workspace_path: str,
+    workspace_entries: list[dict[str, Any]],
+    rules: list[RuleTokens],
+    *,
+    build_fn: Callable[[], tuple[list[dict[str, Any]], list[dict[str, Any]]]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return cached projects or build once under double-checked locking."""
+    return _get_or_build_cached(
+        workspace_path,
+        workspace_entries,
+        rules,
+        build_fn=build_fn,
+        get_unlocked=_get_cached_projects_unlocked,
+        set_unlocked=lambda fp, built: _set_cached_projects_unlocked(fp, built[0], built[1]),
     )
+
+
+def _get_cached_composer_id_to_ws_unlocked(
+    fingerprint: dict[str, Any],
+) -> dict[str, str] | None:
+    data = _read_cache_file_unlocked(COMPOSER_MAP_CACHE_FILE)
+    if not data:
+        return None
+    if not _fingerprint_equal(data.get("fingerprint"), fingerprint):
+        return None
+    mapping = data.get("composer_id_to_ws")
+    if not isinstance(mapping, dict):
+        return None
+    return {str(k): str(v) for k, v in mapping.items()}
 
 
 def get_cached_composer_id_to_ws(
@@ -211,15 +325,21 @@ def get_cached_composer_id_to_ws(
     Returns:
         Mapping on hit, else ``None``.
     """
-    data = _read_cache_file(COMPOSER_MAP_CACHE_FILE)
-    if not data:
-        return None
-    if not _fingerprint_equal(data.get("fingerprint"), fingerprint):
-        return None
-    mapping = data.get("composer_id_to_ws")
-    if not isinstance(mapping, dict):
-        return None
-    return {str(k): str(v) for k, v in mapping.items()}
+    with _summary_cache_lock:
+        return _get_cached_composer_id_to_ws_unlocked(fingerprint)
+
+
+def _set_cached_composer_id_to_ws_unlocked(
+    fingerprint: dict[str, Any],
+    mapping: dict[str, str],
+) -> None:
+    _write_cache_file_unlocked(
+        COMPOSER_MAP_CACHE_FILE,
+        {
+            "fingerprint": fingerprint,
+            "composer_id_to_ws": mapping,
+        },
+    )
 
 
 def set_cached_composer_id_to_ws(
@@ -232,27 +352,32 @@ def set_cached_composer_id_to_ws(
         fingerprint: Invalidation fingerprint paired with *mapping*.
         mapping: Composer UUID to workspace folder name.
     """
-    _write_cache_file(
-        COMPOSER_MAP_CACHE_FILE,
-        {
-            "fingerprint": fingerprint,
-            "composer_id_to_ws": mapping,
-        },
+    with _summary_cache_lock:
+        _set_cached_composer_id_to_ws_unlocked(fingerprint, mapping)
+
+
+def get_or_build_cached_composer_id_to_ws(
+    workspace_path: str,
+    workspace_entries: list[dict[str, Any]],
+    rules: list[RuleTokens],
+    *,
+    build_fn: Callable[[], dict[str, str]],
+) -> dict[str, str]:
+    """Return cached composer map or build once under double-checked locking."""
+    return _get_or_build_cached(
+        workspace_path,
+        workspace_entries,
+        rules,
+        build_fn=build_fn,
+        get_unlocked=_get_cached_composer_id_to_ws_unlocked,
+        set_unlocked=_set_cached_composer_id_to_ws_unlocked,
     )
 
 
-def get_cached_invalid_workspace_aliases(
+def _get_cached_invalid_workspace_aliases_unlocked(
     fingerprint: dict[str, Any],
 ) -> dict[str, str] | None:
-    """Load cached invalid-workspace alias map when the fingerprint matches.
-
-    Args:
-        fingerprint: Storage mtime/rules digest.
-
-    Returns:
-        ``{invalid_id: replacement_id}`` on hit, else ``None``.
-    """
-    data = _read_cache_file(INVALID_WORKSPACE_ALIASES_CACHE_FILE)
+    data = _read_cache_file_unlocked(INVALID_WORKSPACE_ALIASES_CACHE_FILE)
     if not data:
         return None
     if not _fingerprint_equal(data.get("fingerprint"), fingerprint):
@@ -276,6 +401,34 @@ def get_cached_invalid_workspace_aliases(
     return validated
 
 
+def get_cached_invalid_workspace_aliases(
+    fingerprint: dict[str, Any],
+) -> dict[str, str] | None:
+    """Load cached invalid-workspace alias map when the fingerprint matches.
+
+    Args:
+        fingerprint: Storage mtime/rules digest.
+
+    Returns:
+        ``{invalid_id: replacement_id}`` on hit, else ``None``.
+    """
+    with _summary_cache_lock:
+        return _get_cached_invalid_workspace_aliases_unlocked(fingerprint)
+
+
+def _set_cached_invalid_workspace_aliases_unlocked(
+    fingerprint: dict[str, Any],
+    aliases: dict[str, str],
+) -> None:
+    _write_cache_file_unlocked(
+        INVALID_WORKSPACE_ALIASES_CACHE_FILE,
+        {
+            "fingerprint": fingerprint,
+            "invalid_workspace_aliases": aliases,
+        },
+    )
+
+
 def set_cached_invalid_workspace_aliases(
     fingerprint: dict[str, Any],
     aliases: dict[str, str],
@@ -286,18 +439,49 @@ def set_cached_invalid_workspace_aliases(
         fingerprint: Invalidation fingerprint paired with *aliases*.
         aliases: ``{invalid_id: replacement_id}`` from alias inference.
     """
-    _write_cache_file(
-        INVALID_WORKSPACE_ALIASES_CACHE_FILE,
-        {
-            "fingerprint": fingerprint,
-            "invalid_workspace_aliases": aliases,
-        },
+    with _summary_cache_lock:
+        _set_cached_invalid_workspace_aliases_unlocked(fingerprint, aliases)
+
+
+def get_or_build_cached_invalid_workspace_aliases(
+    workspace_path: str,
+    workspace_entries: list[dict[str, Any]],
+    rules: list[RuleTokens],
+    *,
+    build_fn: Callable[[], dict[str, str]],
+) -> dict[str, str]:
+    """Return cached alias map or build once under double-checked locking."""
+    return _get_or_build_cached(
+        workspace_path,
+        workspace_entries,
+        rules,
+        build_fn=build_fn,
+        get_unlocked=_get_cached_invalid_workspace_aliases_unlocked,
+        set_unlocked=_set_cached_invalid_workspace_aliases_unlocked,
     )
 
 
 def _tab_summaries_path(workspace_id: str) -> Path:
     safe = hashlib.sha256(workspace_id.encode("utf-8")).hexdigest()[:16]
     return CACHE_DIR / f"{TAB_SUMMARIES_PREFIX}{safe}.json"
+
+
+def _get_cached_tab_summaries_unlocked(
+    fingerprint: dict[str, Any],
+    workspace_id: str,
+) -> tuple[dict[str, Any], int] | None:
+    data = _read_cache_file_unlocked(_tab_summaries_path(workspace_id))
+    if not data:
+        return None
+    if data.get("workspace_id") != workspace_id:
+        return None
+    if not _fingerprint_equal(data.get("fingerprint"), fingerprint):
+        return None
+    payload = data.get("payload")
+    status = data.get("status", 200)
+    if not isinstance(payload, dict) or not isinstance(status, int):
+        return None
+    return payload, status
 
 
 def get_cached_tab_summaries(
@@ -313,18 +497,25 @@ def get_cached_tab_summaries(
     Returns:
         ``(payload, status)`` on hit, else ``None``.
     """
-    data = _read_cache_file(_tab_summaries_path(workspace_id))
-    if not data:
-        return None
-    if data.get("workspace_id") != workspace_id:
-        return None
-    if not _fingerprint_equal(data.get("fingerprint"), fingerprint):
-        return None
-    payload = data.get("payload")
-    status = data.get("status", 200)
-    if not isinstance(payload, dict) or not isinstance(status, int):
-        return None
-    return payload, status
+    with _summary_cache_lock:
+        return _get_cached_tab_summaries_unlocked(fingerprint, workspace_id)
+
+
+def _set_cached_tab_summaries_unlocked(
+    fingerprint: dict[str, Any],
+    workspace_id: str,
+    payload: dict[str, Any],
+    status: int,
+) -> None:
+    _write_cache_file_unlocked(
+        _tab_summaries_path(workspace_id),
+        {
+            "workspace_id": workspace_id,
+            "fingerprint": fingerprint,
+            "payload": payload,
+            "status": status,
+        },
+    )
 
 
 def set_cached_tab_summaries(
@@ -341,12 +532,27 @@ def set_cached_tab_summaries(
         payload: JSON body returned to clients.
         status: HTTP status code paired with *payload*.
     """
-    _write_cache_file(
-        _tab_summaries_path(workspace_id),
-        {
-            "workspace_id": workspace_id,
-            "fingerprint": fingerprint,
-            "payload": payload,
-            "status": status,
-        },
+    with _summary_cache_lock:
+        _set_cached_tab_summaries_unlocked(fingerprint, workspace_id, payload, status)
+
+
+def get_or_build_cached_tab_summaries(
+    workspace_path: str,
+    workspace_entries: list[dict[str, Any]],
+    rules: list[RuleTokens],
+    workspace_id: str,
+    *,
+    build_fn: Callable[[], tuple[dict[str, Any], int]],
+) -> tuple[dict[str, Any], int]:
+    """Return cached tab summaries or build once under double-checked locking."""
+    return _get_or_build_cached(
+        workspace_path,
+        workspace_entries,
+        rules,
+        build_fn=build_fn,
+        get_unlocked=lambda fp: _get_cached_tab_summaries_unlocked(fp, workspace_id),
+        set_unlocked=lambda fp, built: _set_cached_tab_summaries_unlocked(
+            fp, workspace_id, built[0], built[1],
+        ),
+        should_cache=lambda built: built[1] == 200,
     )

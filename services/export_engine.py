@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 from models import Bubble
 from models.export import CollectedExportEntry
-from services.summary_cache import fingerprint_workspace_storage, nocache_enabled
+from services.summary_cache import nocache_enabled
 from services.workspace_context import (
     WorkspaceContext,
     enrich_workspace_context_from_global_db,
@@ -22,7 +22,6 @@ from services.workspace_context import (
 from services.workspace_db import (
     COMPOSER_ROWS_WITH_HEADERS_SQL,
     collect_workspace_entries,
-    global_storage_db_path,
     load_code_block_diff_map,
     open_global_db,
     safe_fetchall,
@@ -84,7 +83,6 @@ class WorkspaceOrchestration:
 
     workspace_path: str
     workspace_entries: list[dict[str, Any]]
-    fingerprint: dict[str, Any]
     ctx: WorkspaceContext
     workspace_id_to_display_name: dict[str, str]
     workspace_id_to_slug: dict[str, str]
@@ -135,20 +133,11 @@ def prepare_workspace_orchestration(
     nocache: bool = False,
     workspace_entries: list[dict[str, Any]] | None = None,
 ) -> WorkspaceOrchestration:
-    """Scan workspace storage and resolve maps (with summary-cache fingerprint)."""
+    """Scan workspace storage and resolve maps for listing and export."""
     entries = (
         workspace_entries
         if workspace_entries is not None
         else collect_workspace_entries(workspace_path)
-    )
-    gdb = global_storage_db_path(workspace_path)
-    cli_path = get_cli_chats_path()
-    fingerprint = fingerprint_workspace_storage(
-        workspace_path,
-        entries,
-        global_db_path=gdb if os.path.isfile(gdb) else None,
-        rules=rules,
-        cli_chats_path=cli_path if os.path.isdir(cli_path) else None,
     )
     ctx = resolve_workspace_context_cached(
         workspace_path,
@@ -160,7 +149,6 @@ def prepare_workspace_orchestration(
     return WorkspaceOrchestration(
         workspace_path=workspace_path,
         workspace_entries=entries,
-        fingerprint=fingerprint,
         ctx=ctx,
         workspace_id_to_display_name=display_name,
         workspace_id_to_slug=slug_map,

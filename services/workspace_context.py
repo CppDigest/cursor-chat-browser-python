@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sqlite3
 from dataclasses import dataclass, replace
 from typing import Any
@@ -16,7 +15,6 @@ from services.workspace_db import (
     build_composer_id_to_workspace_id_cached,
     collect_invalid_workspace_ids,
     collect_workspace_entries,
-    global_storage_db_path,
     load_bubble_map,
     load_project_layouts_map,
     safe_fetchall,
@@ -179,46 +177,37 @@ def resolve_invalid_workspace_aliases_cached(
         return {}
 
     from services.summary_cache import (
-        fingerprint_workspace_storage,
-        get_cached_invalid_workspace_aliases,
+        get_or_build_cached_invalid_workspace_aliases,
         nocache_enabled,
-        set_cached_invalid_workspace_aliases,
     )
-    from utils.workspace_path import get_cli_chats_path
 
-    gdb = global_storage_db_path(workspace_path)
-    cli_path = get_cli_chats_path()
-    fingerprint = fingerprint_workspace_storage(
+    def build() -> dict[str, str]:
+        layouts = (
+            project_layouts_map
+            if project_layouts_map is not None
+            else load_project_layouts_map(global_db)
+        )
+        composer_rows = safe_fetchall(global_db, COMPOSER_ROWS_WITH_HEADERS_SQL)
+        return infer_invalid_workspace_aliases(
+            composer_rows=composer_rows,
+            project_layouts_map=layouts,
+            project_name_map=ctx.project_name_to_workspace_id,
+            workspace_path_map=ctx.workspace_path_to_id,
+            workspace_entries=ctx.workspace_entries,
+            bubble_map={},
+            composer_id_to_ws=ctx.composer_id_to_workspace_id,
+            invalid_workspace_ids=ctx.invalid_workspace_ids,
+        )
+
+    if nocache_enabled(request_nocache=nocache):
+        return build()
+
+    return get_or_build_cached_invalid_workspace_aliases(
         workspace_path,
         ctx.workspace_entries,
-        global_db_path=gdb if os.path.isfile(gdb) else None,
-        rules=rules,
-        cli_chats_path=cli_path if os.path.isdir(cli_path) else None,
+        rules,
+        build_fn=build,
     )
-    if not nocache_enabled(request_nocache=nocache):
-        cached = get_cached_invalid_workspace_aliases(fingerprint)
-        if cached is not None:
-            return cached
-
-    layouts = (
-        project_layouts_map
-        if project_layouts_map is not None
-        else load_project_layouts_map(global_db)
-    )
-    composer_rows = safe_fetchall(global_db, COMPOSER_ROWS_WITH_HEADERS_SQL)
-    aliases = infer_invalid_workspace_aliases(
-        composer_rows=composer_rows,
-        project_layouts_map=layouts,
-        project_name_map=ctx.project_name_to_workspace_id,
-        workspace_path_map=ctx.workspace_path_to_id,
-        workspace_entries=ctx.workspace_entries,
-        bubble_map={},
-        composer_id_to_ws=ctx.composer_id_to_workspace_id,
-        invalid_workspace_ids=ctx.invalid_workspace_ids,
-    )
-    if not nocache_enabled(request_nocache=nocache):
-        set_cached_invalid_workspace_aliases(fingerprint, aliases)
-    return aliases
 
 
 def with_invalid_workspace_aliases(
