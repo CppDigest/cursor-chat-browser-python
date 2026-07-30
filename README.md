@@ -265,7 +265,7 @@ Notable changes will be documented in **[CHANGELOG.md](CHANGELOG.md)** following
 
 ### GitHub Releases
 
-Pushing a tag matching `v*` (for example `v0.2.1`) runs [`.github/workflows/release.yml`](.github/workflows/release.yml), which attaches three assets to the GitHub Release:
+Pushing a tag matching `v*` (for example `v0.2.1`) runs [`.github/workflows/release.yml`](.github/workflows/release.yml), which attaches three assets to the GitHub Release. Set `[project].version` in `pyproject.toml` to match the tag before you push (for example tag `v0.2.1` requires `version = "0.2.1"`); hatchling names the wheel and sdist from pyproject, not from the git tag.
 
 | Asset | Contents |
 |---|---|

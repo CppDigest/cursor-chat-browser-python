@@ -11,11 +11,13 @@ name: Release
 #
 # Fork verification: push a test tag (for example v0.0.0-test) and confirm the
 # workflow attaches all three files to the resulting Release.
+# workflow_dispatch runs build-python + build-windows only (publish is tag-only).
 
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -100,6 +102,7 @@ jobs:
   publish:
     name: Publish GitHub Release assets
     needs: [build-python, build-windows]
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -115,6 +118,16 @@ jobs:
         with:
           name: windows-bundle
           path: release-assets
+
+      - name: Verify release asset set
+        run: |
+          set -euo pipefail
+          ls -la release-assets/
+          count=$(find release-assets -maxdepth 1 -type f | wc -l)
+          test "$count" -eq 3
+          test "$(find release-assets -maxdepth 1 -type f -name '*.whl' | wc -l)" -eq 1
+          test "$(find release-assets -maxdepth 1 -type f -name '*.tar.gz' | wc -l)" -eq 1
+          test -f release-assets/CursorChatBrowser-windows.zip
 
       - name: Attach artifacts to Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2

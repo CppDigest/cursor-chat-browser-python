@@ -17,7 +17,7 @@ a = Analysis(
         (str(src / "static"), "static"),
     ],
     hiddenimports=[
-        "webview",
+        "webview",  # pywebview must be installed at build time; hiddenimport alone is not enough
         "api.workspaces",
         "api.composers",
         "api.logs",
