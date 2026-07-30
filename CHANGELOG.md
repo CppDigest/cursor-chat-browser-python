@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-30
+
+### Added
+- **highlight.js SRI pins** for script and theme (#145)
+- **Content-Security-Policy** on all served HTML pages: per-response nonce for
+  inline bootstrap; `frame-ancestors 'none'` blocks iframe embedding,
+  `img-src 'self' data:` blocks remote images (relax in
+  `build_content_security_policy`) (#147)
+- **Playwright XSS tests** for `renderMarkdownSafe` (#151)
+
+### Changed
+- **Structured `{error, code}` bodies** on workspaces, composers, search, export,
+  PDF, and config routes (#146)
+- CI regression gate excludes `composers-50` export benchmark (#148)
+
+### Fixed
+- **highlight.js CDN miss**: workspace view skips `hljs.highlightElement` when
+  the script did not load (#145)
+- **Multi-worker set-workspace**: `/api/set-workspace` returns HTTP 409; set
+  `WORKSPACE_PATH` or pass `--base-dir` at startup (#150)
+- **Summary-cache fingerprint lock**: read-compare-write serialised under a
+  module lock (#158)
+
 ## [0.2.0] - 2026-07-17
 
 ### Added
@@ -110,6 +133,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replace silent `except Exception: pass` with structured logging in workspace and bubble load paths (#66, #76)
 - Decouple API handlers from private `_`-prefixed service internals (#73)
 
-[Unreleased]: https://github.com/cppalliance/cppa-cursor-browser/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/cppalliance/cppa-cursor-browser/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/cppalliance/cppa-cursor-browser/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/cppalliance/cppa-cursor-browser/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/cppalliance/cppa-cursor-browser/releases/tag/v0.1.0
