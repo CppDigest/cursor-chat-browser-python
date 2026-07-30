@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-30
+
+### Added
+- **Content-Security-Policy header** with nonce for inline bootstrap (#147)
+- **highlight.js SRI pins** for script and theme (#145)
+- **Playwright XSS tests** for `renderMarkdownSafe` (#151)
+
+### Changed
+- **Structured `{error, code}` bodies** across all API blueprints (#146)
+- CI regression gate excludes `composers-50` export benchmark (#148)
+
+### Fixed
+- **HTTP 409** from `/api/set-workspace` when multiple WSGI workers are in use (#150)
+- **Summary-cache fingerprint read-compare-write** serialised under a module lock (#158)
+
 ## [0.2.0] - 2026-07-17
 
 ### Added
@@ -110,6 +125,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replace silent `except Exception: pass` with structured logging in workspace and bubble load paths (#66, #76)
 - Decouple API handlers from private `_`-prefixed service internals (#73)
 
-[Unreleased]: https://github.com/cppalliance/cppa-cursor-browser/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/cppalliance/cppa-cursor-browser/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/cppalliance/cppa-cursor-browser/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/cppalliance/cppa-cursor-browser/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/cppalliance/cppa-cursor-browser/releases/tag/v0.1.0
