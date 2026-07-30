@@ -265,7 +265,7 @@ Notable changes will be documented in **[CHANGELOG.md](CHANGELOG.md)** following
 
 ### GitHub Releases
 
-Pushing a tag matching `v*` (for example `v0.2.1`) runs [`.github/workflows/release.yml`](.github/workflows/release.yml), which attaches three assets to the GitHub Release. Set `[project].version` in `pyproject.toml` to match the tag before you push (for example tag `v0.2.1` requires `version = "0.2.1"`); hatchling names the wheel and sdist from pyproject, not from the git tag.
+Push a `v*` tag (for example `v0.2.1`) to run [`.github/workflows/release.yml`](.github/workflows/release.yml). It uploads three assets to the GitHub Release. Set `[project].version` in `pyproject.toml` to match the tag before you push (`v0.2.1` needs `version = "0.2.1"`). Hatchling names the wheel and sdist from pyproject, not the git tag.
 
 | Asset | Contents |
 |---|---|
@@ -273,7 +273,7 @@ Pushing a tag matching `v*` (for example `v0.2.1`) runs [`.github/workflows/rele
 | `cppa_cursor_browser-<version>.tar.gz` | Source distribution |
 | `CursorChatBrowser-windows.zip` | Windows PyInstaller onedir bundle (`CursorChatBrowser.exe` plus supporting files) |
 
-At `0.2.0`, local `python -m build` produced a ~154 KiB wheel and ~225 KiB sdist; the Windows zip size depends on the locked dependency tree at tag time. Copy release notes from the matching `[version]` section in `CHANGELOG.md` when publishing the GitHub Release.
+At `0.2.0`, a local `python -m build` gave a ~154 KiB wheel and ~225 KiB sdist. Windows zip size varies with the locked tree at tag time. Paste release notes from the matching `[version]` section in `CHANGELOG.md`.
 
 When an API surface is scheduled for removal, follow the process in **[docs/API_DEPRECATION.md](docs/API_DEPRECATION.md)** (response headers, changelog entries, minimum notice period).
 
