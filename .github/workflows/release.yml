@@ -102,7 +102,7 @@ jobs:
   publish:
     name: Publish GitHub Release assets
     needs: [build-python, build-windows]
-    if: github.ref_type == 'tag'
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -120,13 +120,16 @@ jobs:
           path: release-assets
 
       - name: Verify release asset set
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          version="${RELEASE_TAG#v}"
           ls -la release-assets/
           count=$(find release-assets -maxdepth 1 -type f | wc -l)
           test "$count" -eq 3
-          test "$(find release-assets -maxdepth 1 -type f -name '*.whl' | wc -l)" -eq 1
-          test "$(find release-assets -maxdepth 1 -type f -name '*.tar.gz' | wc -l)" -eq 1
+          test -f "release-assets/cppa_cursor_browser-${version}-py3-none-any.whl"
+          test -f "release-assets/cppa_cursor_browser-${version}.tar.gz"
           test -f release-assets/CursorChatBrowser-windows.zip
 
       - name: Attach artifacts to Release
