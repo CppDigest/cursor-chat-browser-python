@@ -31,7 +31,7 @@ desktop = ["pywebview>=5.0,<7"]
 # Development tooling: testing + type checking.
 dev = [
     "pytest>=8,<9",
-    "pytest-benchmark>=4,<5",
+    "pytest-benchmark>=4,<6",
     "mypy>=1.10,<2",
     "hypothesis>=6.100,<7",
     "playwright==1.50.0",
