@@ -28,7 +28,7 @@ jobs:
 
       - name: Install pip-tools
         # Pin matches tests.yml lockfile job so lock generation and verification agree.
-        run: python -m pip install 'pip-tools==7.5.3'
+        run: python -m pip install 'pip-tools==7.6.1'
 
       - name: Regenerate lock file
         run: |
